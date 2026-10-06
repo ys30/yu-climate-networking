@@ -296,7 +296,9 @@ elif page == "Contacts":
 
         st.divider()
         options = {f"{x['name']} — {x.get('company','')}": x for x in contacts}
-        st.subheader("✏️ Quick status update")\n        st.caption("Select a contact, change stage or follow-up, add notes, then save.")\n        sel = st.selectbox("Contact to maintain", list(options.keys()))
+        st.subheader("Quick status update")
+        st.caption("Select a contact, change stage or follow-up, add notes, then save.")
+        sel = st.selectbox("Contact to maintain", list(options.keys()))
         x = options[sel]
         contact_card(x)
 
