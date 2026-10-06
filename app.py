@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 from datetime import date, datetime
 from supabase import create_client
 
@@ -268,6 +269,24 @@ elif page == "Dashboard":
             if "domain" in df:
                 st.bar_chart(df["domain"].fillna("Other").value_counts().head(8))
             st.markdown('</div>', unsafe_allow_html=True)
+
+        st.subheader("Networking funnel")
+        st.caption("A live Sankey view of the current outreach pipeline.")
+        sankey_stages = ["Recommended","Contacted","Accepted","Replied","Meeting Scheduled","Follow-up","Closed"]
+        counts = {s:int((df["stage"] == s).sum()) for s in sankey_stages}
+        labels = ["Total"] + sankey_stages
+        source, target, value = [], [], []
+        for idx, s in enumerate(sankey_stages, start=1):
+            n = counts.get(s, 0)
+            if n:
+                source.append(0); target.append(idx); value.append(n)
+        fig = go.Figure(go.Sankey(
+            arrangement="snap",
+            node=dict(label=labels, pad=22, thickness=22),
+            link=dict(source=source, target=target, value=value)
+        ))
+        fig.update_layout(height=430, margin=dict(l=20,r=20,t=20,b=20), paper_bgcolor="rgba(0,0,0,0)", font=dict(size=13))
+        st.plotly_chart(fig, use_container_width=True)
 
         st.subheader("Networking growth & conversion")
         st.caption("Cumulative outreach volume and downstream conversion based on dated contact activity.")
