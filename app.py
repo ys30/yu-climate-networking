@@ -99,6 +99,50 @@ def get_client():
 
 sb = get_client()
 
+def auth_gate():
+    if "session" not in st.session_state:
+        st.session_state.session = None
+
+    if st.session_state.session is None:
+        st.markdown("""
+        <div class="hero">
+          <h1>🌎 Yu Climate Networking</h1>
+          <p>Private networking CRM · Sign in to continue</p>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        with st.form("login_form"):
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Sign in", use_container_width=True)
+            if submitted:
+                try:
+                    res = sb.auth.sign_in_with_password({"email": email, "password": password})
+                    if res.session:
+                        st.session_state.session = res.session
+                        st.success("Signed in.")
+                        st.rerun()
+                    else:
+                        st.error("Sign-in failed.")
+                except Exception as e:
+                    st.error("Sign-in failed. Check your email/password and make sure this user exists in Supabase Auth.")
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.stop()
+
+    session = st.session_state.session
+    try:
+        sb.postgrest.auth(session.access_token)
+    except Exception:
+        try:
+            refreshed = sb.auth.refresh_session(session.refresh_token)
+            st.session_state.session = refreshed.session
+            sb.postgrest.auth(refreshed.session.access_token)
+        except Exception:
+            st.session_state.session = None
+            st.rerun()
+
+auth_gate()
+
 def fetch_contacts():
     return sb.table("contacts").select("*").order("created_at", desc=True).execute().data or []
 
@@ -148,6 +192,20 @@ df = pd.DataFrame(contacts)
 
 with st.sidebar:
     st.markdown("## 🌎 Yu Climate Networking")
+    user_email = ""
+    try:
+        user_email = st.session_state.session.user.email or ""
+    except Exception:
+        pass
+    if user_email:
+        st.caption(f"Signed in as {user_email}")
+    if st.button("Sign out", use_container_width=True):
+        try:
+            sb.auth.sign_out()
+        except Exception:
+            pass
+        st.session_state.session = None
+        st.rerun()
     st.caption("Bay Area environmental & climate-data networking tracker")
     page = st.radio("Navigate", ["Dashboard","Today's 3","Contacts","Follow-ups","Add contact","Exports"], label_visibility="collapsed")
     st.divider()
