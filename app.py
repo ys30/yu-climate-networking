@@ -269,6 +269,36 @@ elif page == "Dashboard":
                 st.bar_chart(df["domain"].fillna("Other").value_counts().head(8))
             st.markdown('</div>', unsafe_allow_html=True)
 
+        st.subheader("Networking growth & conversion")
+        st.caption("Cumulative outreach volume and downstream conversion based on dated contact activity.")
+        trend_rows = []
+        today_d = date.today()
+        dated = []
+        for z in contacts:
+            raw = z.get("recommended_date") or z.get("created_at")
+            if raw:
+                try:
+                    d = date.fromisoformat(str(raw)[:10])
+                    dated.append((d, z))
+                except Exception:
+                    pass
+        if dated:
+            start_d = min(d for d,_ in dated)
+            days = pd.date_range(start=start_d, end=today_d, freq="D")
+            for ts in days:
+                d = ts.date()
+                visible = [z for rd,z in dated if rd <= d]
+                total_n = len(visible)
+                contacted_n = sum((z.get("first_contacted_at") and str(z.get("first_contacted_at"))[:10] <= str(d)) or z.get("stage") in ["Contacted","Accepted","Replied","Meeting Scheduled","Follow-up","Closed"] for z in visible)
+                replied_n = sum(z.get("stage") in ["Replied","Meeting Scheduled","Follow-up","Closed"] for z in visible)
+                meeting_n = sum(z.get("stage") in ["Meeting Scheduled","Follow-up","Closed"] for z in visible)
+                trend_rows.append({"Date":d,"Total":total_n,"Contacted":contacted_n,"Replied":replied_n,"Meetings":meeting_n})
+            trend_df = pd.DataFrame(trend_rows).set_index("Date")
+            st.line_chart(trend_df, use_container_width=True)
+            st.caption("Conversion snapshot: " + f"Contacted {contacted_n}/{total_n} · Replied {replied_n}/{total_n} · Meetings {meeting_n}/{total_n}")
+        else:
+            st.info("Trend chart will appear once dated contact records are available.")
+
         st.subheader("Recent contacts")
         for x in contacts[:8]:
             contact_card(x)
