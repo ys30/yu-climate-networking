@@ -82,6 +82,19 @@ DOMAINS = ["Environmental Data Science","Climate Data Science","GIS/Geospatial",
 
 @st.cache_resource
 def get_client():
+    missing = [k for k in ("SUPABASE_URL", "SUPABASE_KEY") if k not in st.secrets]
+    if missing:
+        st.error("Supabase is not configured yet.")
+        st.info(
+            "In Streamlit Community Cloud, open your app → Manage app / Settings → Secrets, "
+            "add SUPABASE_URL and SUPABASE_KEY, save, then reboot the app."
+        )
+        st.code(
+            'SUPABASE_URL = "https://jskihhnapgcxnusitung.supabase.co"\n'
+            'SUPABASE_KEY = "your Supabase publishable key"',
+            language="toml",
+        )
+        st.stop()
     return create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
 sb = get_client()
