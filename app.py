@@ -210,6 +210,15 @@ def followup_plan(contact, interactions):
     followup_count = sum(1 for h in hist if h.get("interaction_type") == "Follow-up sent")
 
     first = (contact.get("name") or "there").split()[0]
+    if not base and not hist:
+        return {
+            "action":"Set contact date",
+            "due":None,
+            "status":"missing",
+            "reason":"This is a historical contact without a reliable outreach date. Add the last message/contact date so timing can be calculated safely.",
+            "draft":""
+        }
+
     if stage == "Accepted" and not any(h.get("interaction_type") == "Message sent" for h in hist):
         return {
             "action":"Send first message",
