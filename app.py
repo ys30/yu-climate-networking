@@ -8,29 +8,29 @@ st.set_page_config(page_title="Yu Climate Networking", page_icon="🌎", layout=
 CUSTOM_CSS = """
 <style>
 :root {
-  --bg: #0b1020;
-  --card: rgba(255,255,255,.06);
-  --border: rgba(255,255,255,.10);
-  --muted: #aeb7c8;
-  --accent: #7dd3fc;
+  --bg: #f6f8fc;
+  --card: #ffffff;
+  --border: #dfe5ee;
+  --muted: #64748b;
+  --accent: #2563eb;
 }
 .stApp {
   background:
     radial-gradient(circle at 15% 20%, rgba(14,165,233,.16), transparent 24%),
     radial-gradient(circle at 85% 10%, rgba(168,85,247,.14), transparent 22%),
-    linear-gradient(180deg, #0b1020 0%, #111827 100%);
+    linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%); color: #172033;
 }
 .block-container {padding-top: 1.4rem; padding-bottom: 2rem;}
 [data-testid="stSidebar"] {
-  background: linear-gradient(180deg, rgba(15,23,42,.98), rgba(17,24,39,.98));
-  border-right: 1px solid rgba(255,255,255,.08);
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  border-right: 1px solid #e2e8f0;
 }
 .hero {
   padding: 22px 24px;
   border: 1px solid var(--border);
   border-radius: 22px;
-  background: linear-gradient(135deg, rgba(14,165,233,.12), rgba(168,85,247,.10));
-  box-shadow: 0 18px 45px rgba(0,0,0,.24);
+  background: linear-gradient(135deg, #eff6ff, #f8fafc);
+  box-shadow: 0 10px 28px rgba(15,23,42,.07);
   margin-bottom: 18px;
 }
 .hero h1 {font-size: 2.1rem; margin: 0 0 6px 0;}
@@ -43,12 +43,12 @@ CUSTOM_CSS = """
   box-shadow: 0 12px 34px rgba(0,0,0,.18);
 }
 .person-card {
-  border: 1px solid rgba(125,211,252,.18);
+  border: 1px solid #dfe7f1;
   border-radius: 20px;
-  background: linear-gradient(160deg, rgba(255,255,255,.07), rgba(255,255,255,.03));
+  background: #ffffff;
   padding: 18px;
   margin-bottom: 14px;
-  box-shadow: 0 14px 34px rgba(0,0,0,.17);
+  box-shadow: 0 8px 22px rgba(15,23,42,.055);
 }
 .badge {
   display: inline-block;
@@ -58,11 +58,11 @@ CUSTOM_CSS = """
   border: 1px solid rgba(255,255,255,.10);
   margin-right: 6px;
   margin-bottom: 6px;
-  color: #e5e7eb;
-  background: rgba(255,255,255,.06);
+  color: #334155;
+  background: #f8fafc;
 }
-.badge-accent {background: rgba(14,165,233,.12); border-color: rgba(14,165,233,.25);}
-.badge-green {background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.25);}
+.badge-accent {background: #eff6ff; border-color: #bfdbfe; color:#1d4ed8;}
+.badge-green {background: #ecfdf5; border-color: #bbf7d0; color:#15803d;}
 .small-muted {color: var(--muted); font-size: .9rem;}
 div[data-testid="stMetric"] {
   background: rgba(255,255,255,.055);
@@ -296,7 +296,7 @@ elif page == "Contacts":
 
         st.divider()
         options = {f"{x['name']} — {x.get('company','')}": x for x in contacts}
-        sel = st.selectbox("Select a contact to update", list(options.keys()))
+        st.subheader("✏️ Quick status update")\n        st.caption("Select a contact, change stage or follow-up, add notes, then save.")\n        sel = st.selectbox("Contact to maintain", list(options.keys()))
         x = options[sel]
         contact_card(x)
 
@@ -307,7 +307,7 @@ elif page == "Contacts":
                 stage = st.selectbox("Stage", STAGES, index=STAGES.index(current_stage) if current_stage in STAGES else 0)
                 next_follow = st.date_input("Next follow-up", value=None)
                 notes = st.text_area("Notes", value=x.get("notes") or "", height=150)
-                if st.form_submit_button("Save status", use_container_width=True):
+                if st.form_submit_button("💾 Save status update", use_container_width=True):
                     payload = {"stage":stage,"notes":notes,"next_followup_at":str(next_follow) if next_follow else None,"updated_at":datetime.utcnow().isoformat()}
                     if stage in ["Contacted","Accepted","Replied","Meeting Scheduled","Follow-up","Closed"]:
                         payload["last_contacted_at"] = str(date.today())
