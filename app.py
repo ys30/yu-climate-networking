@@ -20,7 +20,7 @@ CUSTOM_CSS = """
     radial-gradient(circle at 85% 10%, rgba(168,85,247,.14), transparent 22%),
     linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%); color: #172033;
 }
-.block-container {padding-top: 1.4rem; padding-bottom: 2rem;}
+.block-container {padding-top: 1.1rem; padding-bottom: 2rem; max-width: 1500px;}\nh1,h2,h3 {color:#0f172a !important;}
 [data-testid="stSidebar"] {
   background: linear-gradient(180deg, #ffffff, #f8fafc);
   border-right: 1px solid #e2e8f0;
@@ -207,7 +207,7 @@ with st.sidebar:
         st.session_state.session = None
         st.rerun()
     st.caption("Bay Area environmental & climate-data networking tracker")
-    page = st.radio("Navigate", ["Dashboard","Today's 3","Contacts","Follow-ups","Add contact","Exports"], label_visibility="collapsed")
+    page = st.radio("Navigate", ["Dashboard","Today's 3","Update status","Contacts","Follow-ups","Add contact","Exports"], label_visibility="collapsed")
     st.divider()
     st.markdown("**Pipeline**")
     if not df.empty:
@@ -215,7 +215,32 @@ with st.sidebar:
             n = int((df["stage"] == s).sum()) if "stage" in df else 0
             st.caption(f"{s}: {n}")
 
-if page == "Dashboard":
+if page == "Update status":
+    hero("Update contact status", "Fast manual maintenance for stage, follow-up date, and notes.")
+    if not contacts:
+        st.info("No contacts yet.")
+    else:
+        options = {x["name"] + " — " + (x.get("company") or "No company"): x for x in contacts}
+        sel = st.selectbox("Choose contact", list(options.keys()))
+        x = options[sel]
+        contact_card(x)
+        with st.form("fast_status_update"):
+            c1,c2 = st.columns(2)
+            current_stage = x.get("stage","Recommended")
+            stage = c1.selectbox("Pipeline stage", STAGES, index=STAGES.index(current_stage) if current_stage in STAGES else 0)
+            next_follow = c2.date_input("Next follow-up", value=None)
+            notes = st.text_area("Notes", value=x.get("notes") or "", height=120)
+            if st.form_submit_button("Save update", use_container_width=True):
+                payload = {"stage":stage,"notes":notes,"next_followup_at":str(next_follow) if next_follow else None,"updated_at":datetime.utcnow().isoformat()}
+                if stage != "Recommended":
+                    payload["last_contacted_at"] = str(date.today())
+                    if not x.get("first_contacted_at"):
+                        payload["first_contacted_at"] = str(date.today())
+                save_contact(payload, x["id"])
+                st.success("Status updated.")
+                st.rerun()
+
+elif page == "Dashboard":
     hero("Networking Dashboard", "Track momentum, replies, meetings, and the next best follow-up.")
     if df.empty:
         st.info("No contacts yet.")
