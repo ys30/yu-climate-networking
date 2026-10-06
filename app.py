@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from supabase import create_client
 
 st.set_page_config(page_title="Yu Climate Networking", page_icon="🌎", layout="wide", initial_sidebar_state="expanded")
@@ -176,6 +176,89 @@ def stage_badge(stage):
     cls = "badge badge-green" if stage in ["Accepted","Replied","Meeting Scheduled"] else "badge badge-accent"
     return f'<span class="{cls}">{stage}</span>'
 
+def add_business_days(start, days):
+    d = start
+    added = 0
+    while added < days:
+        d += timedelta(days=1)
+        if d.weekday() < 5:
+            added += 1
+    return d
+
+def parse_day(v):
+    if not v:
+        return None
+    try:
+        return date.fromisoformat(str(v)[:10])
+    except Exception:
+        return None
+
+def followup_plan(contact, interactions):
+    stage = contact.get("stage") or "Recommended"
+    if stage in ["Recommended","Meeting Scheduled","Closed"]:
+        return None
+
+    cid = contact.get("id")
+    hist = [h for h in interactions if h.get("contact_id") == cid]
+    hist = sorted(hist, key=lambda h: str(h.get("occurred_at") or ""))
+    reply_dates = [parse_day(h.get("occurred_at")) for h in hist if h.get("interaction_type") == "Reply received"]
+    outbound = [h for h in hist if h.get("interaction_type") in ["Invitation sent","Message sent","Follow-up sent","Status changed"]]
+    outbound_dates = [parse_day(h.get("occurred_at")) for h in outbound if parse_day(h.get("occurred_at"))]
+    last_reply = max([d for d in reply_dates if d], default=None)
+    last_out = max(outbound_dates, default=None)
+    base = last_out or parse_day(contact.get("last_contacted_at")) or parse_day(contact.get("first_contacted_at"))
+    followup_count = sum(1 for h in hist if h.get("interaction_type") == "Follow-up sent")
+
+    first = (contact.get("name") or "there").split()[0]
+    if stage == "Accepted" and not any(h.get("interaction_type") == "Message sent" for h in hist):
+        return {
+            "action":"Send first message",
+            "due": date.today(),
+            "status":"due",
+            "reason":"Connection accepted, but no first message is logged.",
+            "draft":f"Hi {first}, thanks for connecting. I’m transitioning from environmental research into applied data science and would value one quick perspective: what skill mattered most in your move into this work?"
+        }
+
+    if stage == "Replied":
+        if last_reply and (not last_out or last_reply >= last_out):
+            return None
+
+    if not base:
+        return {
+            "action":"Set contact date",
+            "due":None,
+            "status":"missing",
+            "reason":"No reliable last-contact date is stored, so a follow-up date cannot be calculated yet.",
+            "draft":""
+        }
+
+    wait_days = 7 if followup_count >= 1 or stage == "Follow-up" else 5
+    due = add_business_days(base, wait_days)
+
+    if followup_count >= 2:
+        return {
+            "action":"Pause outreach",
+            "due":due,
+            "status":"due" if due <= date.today() else "scheduled",
+            "reason":"Two follow-ups are already logged. Avoid another message unless there is a new reason to reconnect.",
+            "draft":""
+        }
+
+    if followup_count >= 1:
+        draft = f"Hi {first}, one last quick follow-up—totally understand if timing is busy. If you have a moment, I’d appreciate any brief advice. Thanks again."
+    elif stage == "Replied":
+        draft = f"Hi {first}, just following up on my last note in case it got buried. No rush—I’d still appreciate any thoughts when you have a moment."
+    else:
+        draft = f"Hi {first}, just following up on my earlier note in case it got buried. I’d really value any quick advice when you have a moment. Thanks!"
+
+    return {
+        "action":"Follow up",
+        "due":due,
+        "status":"due" if due <= date.today() else "scheduled",
+        "reason":f"No reply is logged after the latest outreach. Suggested wait: {wait_days} business days.",
+        "draft":draft
+    }
+
 def contact_card(x):
     title = x.get("title") or ""
     company = x.get("company") or ""
@@ -200,6 +283,7 @@ def contact_card(x):
     )
 
 contacts = fetch_contacts()
+all_interactions = fetch_interactions()
 df = pd.DataFrame(contacts)
 
 with st.sidebar:
@@ -432,26 +516,71 @@ elif page == "Contacts":
             st.dataframe(hdf[["occurred_at","interaction_type","summary"]], use_container_width=True, hide_index=True)
 
 elif page == "Follow-ups":
-    hero("Follow-ups", "A focused queue of people who are due for another touch.")
-    today = date.today()
-    due = []
+    hero("Follow-up Assistant", "Automatically identifies people without a reply, recommends when to follow up, and drafts the next message.")
+    plans = []
     for x in contacts:
-        d = x.get("next_followup_at")
-        if d:
-            try:
-                if date.fromisoformat(d) <= today:
-                    due.append(x)
-            except Exception:
-                pass
-    if not due:
-        st.success("No follow-ups due today.")
-    else:
-        for x in due:
-            contact_card(x)
-            if x.get("notes"):
-                st.write(x["notes"])
-            if x.get("linkedin_url"):
-                st.link_button("Open profile", x["linkedin_url"])
+        p = followup_plan(x, all_interactions)
+        if p:
+            plans.append((x,p))
+
+    due_now = [(x,p) for x,p in plans if p["status"] == "due"]
+    scheduled = [(x,p) for x,p in plans if p["status"] == "scheduled"]
+    missing = [(x,p) for x,p in plans if p["status"] == "missing"]
+
+    m1,m2,m3 = st.columns(3)
+    m1.metric("Due now", len(due_now))
+    m2.metric("Scheduled", len(scheduled))
+    m3.metric("Need contact date", len(missing))
+
+    tabs = st.tabs(["Due now","Upcoming","Needs a date"])
+    groups = [due_now, scheduled, missing]
+    for tab, group in zip(tabs, groups):
+        with tab:
+            if not group:
+                st.success("Nothing in this queue.")
+            for x,p in group:
+                contact_card(x)
+                c1,c2 = st.columns([1.4,1])
+                with c1:
+                    st.markdown(f"**Recommended action:** {p['action']}")
+                    if p["due"]:
+                        st.write(f"**Recommended date:** {p['due'].strftime('%a, %b %d, %Y')}")
+                    st.caption(p["reason"])
+                    if p["draft"]:
+                        st.markdown("**Suggested message**")
+                        st.code(p["draft"], language=None)
+                with c2:
+                    if x.get("linkedin_url"):
+                        st.link_button("Open profile", x["linkedin_url"], use_container_width=True)
+                    if p["due"] and p["action"] == "Follow up":
+                        if st.button("Schedule recommended date", key="sched_"+x["id"], use_container_width=True):
+                            save_contact({"next_followup_at":str(p["due"])}, x["id"])
+                            st.success("Follow-up date saved.")
+                            st.rerun()
+                        if st.button("Mark follow-up sent today", key="sent_"+x["id"], use_container_width=True):
+                            next_due = add_business_days(date.today(), 7)
+                            save_contact({"stage":"Follow-up","last_contacted_at":str(date.today()),"next_followup_at":str(next_due)}, x["id"])
+                            sb.table("interactions").insert({
+                                "contact_id":x["id"],
+                                "interaction_type":"Follow-up sent",
+                                "summary":p["draft"] or "Follow-up sent.",
+                                "occurred_at":str(date.today())
+                            }).execute()
+                            st.success(f"Logged. Next check: {next_due}.")
+                            st.rerun()
+                    elif p["action"] == "Send first message":
+                        if st.button("Mark first message sent", key="first_"+x["id"], use_container_width=True):
+                            next_due = add_business_days(date.today(), 5)
+                            save_contact({"last_contacted_at":str(date.today()),"next_followup_at":str(next_due)}, x["id"])
+                            sb.table("interactions").insert({
+                                "contact_id":x["id"],
+                                "interaction_type":"Message sent",
+                                "summary":p["draft"],
+                                "occurred_at":str(date.today())
+                            }).execute()
+                            st.success(f"Message logged. Follow-up check: {next_due}.")
+                            st.rerun()
+                st.divider()
 
 elif page == "Add contact":
     hero("Add contact", "Manually add a person when you find someone outside the daily recommendations.")
