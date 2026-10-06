@@ -74,6 +74,17 @@ div[data-testid="stMetric"] {
 .stButton>button, .stLinkButton>a {
   border-radius: 12px !important;
 }
+
+/* v2 polish */
+[data-testid="stMetric"] {box-shadow:0 8px 24px rgba(15,23,42,.05); min-height:112px;}
+[data-testid="stMetricValue"] {font-size:2rem; color:#0f172a;}
+[data-testid="stMetricLabel"] {font-weight:600; color:#64748b;}
+div[data-testid="stPlotlyChart"], div[data-testid="stVegaLiteChart"] {
+  background:#fff; border:1px solid #e6ebf2; border-radius:16px; padding:8px;
+  box-shadow:0 8px 24px rgba(15,23,42,.045);
+}
+.stDataFrame {border:1px solid #e6ebf2; border-radius:14px; overflow:hidden;}
+hr {border-color:#e8edf4;}
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
@@ -256,37 +267,49 @@ elif page == "Dashboard":
         c3.metric("Replies", int(replied), f"{replied/total:.0%}" if total else "—")
         c4.metric("Meetings", int(meetings), f"{meetings/total:.0%}" if total else "—")
 
-        l,r = st.columns([1.25,1])
-        with l:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.subheader("Pipeline")
-            pipe = df.groupby("stage", dropna=False).size().reindex(STAGES, fill_value=0)
-            st.bar_chart(pipe)
-            st.markdown('</div>', unsafe_allow_html=True)
-        with r:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
+        left,right = st.columns([1.05,1])
+        with left:
+            st.subheader("Needs attention")
+            accepted_waiting = df[df["stage"] == "Accepted"]
+            replied_waiting = df[df["stage"] == "Replied"]
+            follow_due = df[(df["next_followup_at"].notna()) & (df["next_followup_at"].astype(str) <= str(date.today()))] if "next_followup_at" in df else pd.DataFrame()
+            a1,a2,a3 = st.columns(3)
+            a1.metric("Accepted", len(accepted_waiting))
+            a2.metric("Replied", len(replied_waiting))
+            a3.metric("Follow-ups due", len(follow_due))
+            attention = pd.concat([accepted_waiting, replied_waiting, follow_due]).drop_duplicates(subset=["id"]) if not df.empty else pd.DataFrame()
+            if attention.empty:
+                st.success("Nothing urgent — your follow-up queue is clear.")
+            else:
+                cols = [x for x in ["name","company","stage","next_followup_at"] if x in attention.columns]
+                st.dataframe(attention[cols].head(8), use_container_width=True, hide_index=True)
+        with right:
             st.subheader("Domain mix")
             if "domain" in df:
-                st.bar_chart(df["domain"].fillna("Other").value_counts().head(8))
-            st.markdown('</div>', unsafe_allow_html=True)
+                st.bar_chart(df["domain"].fillna("Other").value_counts().head(7))
 
         st.subheader("Networking funnel")
         st.caption("A live Sankey view of the current outreach pipeline.")
-        sankey_stages = ["Recommended","Contacted","Accepted","Replied","Meeting Scheduled","Follow-up","Closed"]
-        counts = {s:int((df["stage"] == s).sum()) for s in sankey_stages}
-        labels = ["Total"] + sankey_stages
-        source, target, value = [], [], []
-        for idx, s in enumerate(sankey_stages, start=1):
-            n = counts.get(s, 0)
-            if n:
-                source.append(0); target.append(idx); value.append(n)
+        funnel_labels = ["Total","Contacted","Accepted","Replied","Meeting"]
+        total_f = len(df)
+        contacted_f = int(df["stage"].isin(["Contacted","Accepted","Replied","Meeting Scheduled","Follow-up","Closed"]).sum())
+        accepted_f = int(df["stage"].isin(["Accepted","Replied","Meeting Scheduled","Follow-up","Closed"]).sum())
+        replied_f = int(df["stage"].isin(["Replied","Meeting Scheduled","Follow-up","Closed"]).sum())
+        meeting_f = int(df["stage"].isin(["Meeting Scheduled","Follow-up","Closed"]).sum())
+        vals = [contacted_f, accepted_f, replied_f, meeting_f]
         fig = go.Figure(go.Sankey(
             arrangement="snap",
-            node=dict(label=labels, pad=22, thickness=22),
-            link=dict(source=source, target=target, value=value)
+            node=dict(label=funnel_labels, pad=26, thickness=24,
+                      color=["#2563eb","#38bdf8","#22c55e","#14b8a6","#8b5cf6"]),
+            link=dict(source=[0,1,2,3], target=[1,2,3,4], value=vals,
+                      color=["rgba(37,99,235,.22)","rgba(56,189,248,.24)","rgba(34,197,94,.24)","rgba(139,92,246,.24)"])
         ))
-        fig.update_layout(height=430, margin=dict(l=20,r=20,t=20,b=20), paper_bgcolor="rgba(0,0,0,0)", font=dict(size=13))
+        fig.update_layout(height=360, margin=dict(l=24,r=24,t=15,b=15),
+                          paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                          font=dict(size=14, color="#334155"))
         st.plotly_chart(fig, use_container_width=True)
+        st.caption(f"Current funnel · {total_f} total → {contacted_f} contacted → {accepted_f} accepted → {replied_f} replied → {meeting_f} meetings")
+
 
         st.subheader("Networking growth & conversion")
         st.caption("Cumulative outreach volume and downstream conversion based on dated contact activity.")
